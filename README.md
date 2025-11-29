@@ -317,12 +317,19 @@ pip install numpy pandas matplotlib tensorflow keras-tuner scikit-learn seaborn 
 
 ## 7. Usage
 
-### 7.1 Running the Analysis
+### 7.1 Project Organization
 
-Execute the Jupyter notebook `autoencoder test.ipynb` sequentially:
+The project is organized into three main directories:
+- `src/`: Contains core Python modules (`AutoencoderLSTM.py`, `spectra_analysis.py`) and utility scripts.
+- `notebooks/`: Contains the main analysis notebooks, including the primary pipeline `autoencoder test.ipynb`.
+- `experiments/`: Contains exploratory notebooks and draft scripts for threshold testing and feature extraction.
+
+### 7.2 Running the Analysis
+
+Execute the main Jupyter notebook located in the `notebooks/` directory:
 
 ```bash
-jupyter notebook "autoencoder test.ipynb"
+jupyter notebook "notebooks/autoencoder test.ipynb"
 ```
 
 **Workflow**:
@@ -333,7 +340,7 @@ jupyter notebook "autoencoder test.ipynb"
 5. **Cells 18-20**: LSTM training and temporal modeling
 6. **Cells 21-27**: Anomaly detection and results
 
-### 7.2 Data Format Specification
+### 7.3 Data Format Specification
 
 **Input**: Pickled pandas DataFrame with structure:
 ```python
