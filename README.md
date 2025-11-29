@@ -29,36 +29,32 @@ Recent advances in machine learning have demonstrated promise for process monito
 
 ### 2.1 Variational Autoencoder (VAE)
 
-The VAE learns a probabilistic mapping from high-dimensional spectral data **x** ∈ ℝ^D to a low-dimensional latent space **z** ∈ ℝ^d, where D >> d.
+The VAE learns a probabilistic mapping from high-dimensional spectral data $\mathbf{x} \in \mathbb{R}^D$ to a low-dimensional latent space $\mathbf{z} \in \mathbb{R}^d$, where $D \gg d$.
 
 **Encoder (Recognition Model)**: Maps input to latent distribution parameters:
 
-```
-q_φ(z|x) = N(z; μ(x), σ²(x))
-```
+$$q_\phi(z|x) = \mathcal{N}(z; \mu(x), \sigma^2(x))$$
 
-where μ(x) and σ²(x) are parameterized by neural networks with weights φ.
+where $\mu(x)$ and $\sigma^2(x)$ are parameterized by neural networks with weights $\phi$.
 
 **Decoder (Generative Model)**: Reconstructs input from latent representation:
 
-```
-p_θ(x|z) = N(x; μ'(z), σ'²(z))
-```
+$$p_\theta(x|z) = \mathcal{N}(x; \mu'(z), \sigma'^2(z))$$
 
 **Loss Function**: The VAE is trained to maximize the Evidence Lower Bound (ELBO):
 
-```
-L(θ, φ; x) = E_q[log p_θ(x|z)] - KL(q_φ(z|x) || p(z))
-           = -||x - x̂||² - KL(q_φ(z|x) || N(0, I))
-```
+$$
+\begin{aligned}
+\mathcal{L}(\theta, \phi; x) &= \mathbb{E}_q[\log p_\theta(x|z)] - D_{KL}(q_\phi(z|x) || p(z)) \\
+&= -||x - \hat{x}||^2 - D_{KL}(q_\phi(z|x) || \mathcal{N}(0, I))
+\end{aligned}
+$$
 
 where the first term is the reconstruction loss and the second is the KL divergence regularization term.
 
 **Reparameterization Trick**: To enable backpropagation through stochastic sampling:
 
-```
-z = μ(x) + σ(x) ⊙ ε, where ε ~ N(0, I)
-```
+$$z = \mu(x) + \sigma(x) \odot \epsilon, \quad \text{where} \quad \epsilon \sim \mathcal{N}(0, I)$$
 
 ### 2.2 Long Short-Term Memory (LSTM)
 
@@ -66,16 +62,18 @@ For temporal sequence modeling, we employ LSTM networks to predict the next late
 
 **LSTM Cell Equations**:
 
-```
-f_t = σ(W_f · [h_{t-1}, z_t] + b_f)           (forget gate)
-i_t = σ(W_i · [h_{t-1}, z_t] + b_i)           (input gate)
-C̃_t = tanh(W_C · [h_{t-1}, z_t] + b_C)       (candidate values)
-C_t = f_t ⊙ C_{t-1} + i_t ⊙ C̃_t              (cell state)
-o_t = σ(W_o · [h_{t-1}, z_t] + b_o)           (output gate)
-h_t = o_t ⊙ tanh(C_t)                         (hidden state)
-```
+$$
+\begin{aligned}
+f_t &= \sigma(W_f \cdot [h_{t-1}, z_t] + b_f) & \text{(forget gate)} \\
+i_t &= \sigma(W_i \cdot [h_{t-1}, z_t] + b_i) & \text{(input gate)} \\
+\tilde{C}_t &= \tanh(W_C \cdot [h_{t-1}, z_t] + b_C) & \text{(candidate values)} \\
+C_t &= f_t \odot C_{t-1} + i_t \odot \tilde{C}_t & \text{(cell state)} \\
+o_t &= \sigma(W_o \cdot [h_{t-1}, z_t] + b_o) & \text{(output gate)} \\
+h_t &= o_t \odot \tanh(C_t) & \text{(hidden state)}
+\end{aligned}
+$$
 
-The LSTM predicts the next latent vector: ẑ_{t+1} = f_LSTM(z_t, h_t)
+The LSTM predicts the next latent vector: $\hat{z}_{t+1} = f_{LSTM}(z_t, h_t)$
 
 ### 2.3 Anomaly Detection Framework
 
@@ -83,77 +81,59 @@ We define a composite anomaly score combining spatial and temporal deviations, l
 
 **Reconstruction Error (Spatial Anomaly)**:
 
-```
-E_recon(t) = ||x_t - x̂_t||²₂ = ||x_t - Decoder(Encoder(x_t))||²₂
-```
+$$E_{recon}(t) = ||x_t - \hat{x}_t||^2_2 = ||x_t - \text{Decoder}(\text{Encoder}(x_t))||^2_2$$
 
-This measures the L2 norm of the spectral reconstruction error at time t. Under the assumption that normal process states lie on a learned manifold M in the high-dimensional spectral space, deviations from this manifold (e.g., due to process drift or equipment malfunction) manifest as increased reconstruction error. Formally:
+This measures the L2 norm of the spectral reconstruction error at time $t$. Under the assumption that normal process states lie on a learned manifold $\mathcal{M}$ in the high-dimensional spectral space, deviations from this manifold (e.g., due to process drift or equipment malfunction) manifest as increased reconstruction error. Formally:
 
-```
-E_recon(t) = Σ_{λ=1}^{D} [x_t(λ) - x̂_t(λ)]²
-```
+$$E_{recon}(t) = \sum_{\lambda=1}^{D} [x_t(\lambda) - \hat{x}_t(\lambda)]^2$$
 
-where D = 4550 wavelength channels. The VAE learns to minimize this error during training on normal process data, making it sensitive to out-of-distribution spectral patterns.
+where $D = 4550$ wavelength channels. The VAE learns to minimize this error during training on normal process data, making it sensitive to out-of-distribution spectral patterns.
 
 **Theoretical Justification**: The reconstruction error can be interpreted as the negative log-likelihood under the decoder's probabilistic model:
 
-```
-E_recon(t) ≈ -log p_θ(x_t|z_t)
-```
+$$E_{recon}(t) \approx -\log p_\theta(x_t|z_t)$$
 
 High reconstruction error indicates low probability under the learned generative model, signifying anomalous spectral signatures.
 
 **Prediction Error (Temporal Anomaly)**:
 
-```
-E_pred(t) = ||z_t - ẑ_t||²₂ = ||z_t - LSTM(z_{t-1}, h_{t-1})||²₂
-```
+$$E_{pred}(t) = ||z_t - \hat{z}_t||^2_2 = ||z_t - \text{LSTM}(z_{t-1}, h_{t-1})||^2_2$$
 
-This quantifies the deviation between the observed latent state z_t and the LSTM's prediction ẑ_t based on historical context. The LSTM learns the temporal dynamics:
+This quantifies the deviation between the observed latent state $z_t$ and the LSTM's prediction $\hat{z}_t$ based on historical context. The LSTM learns the temporal dynamics:
 
-```
-P(z_t | z_{1:t-1}) ≈ N(ẑ_t, Σ_pred)
-```
+$$P(z_t | z_{1:t-1}) \approx \mathcal{N}(\hat{z}_t, \Sigma_{pred})$$
 
-where Σ_pred represents prediction uncertainty. Sudden changes in plasma chemistry (e.g., endpoint transition) violate these learned dynamics, resulting in large prediction errors.
+where $\Sigma_{pred}$ represents prediction uncertainty. Sudden changes in plasma chemistry (e.g., endpoint transition) violate these learned dynamics, resulting in large prediction errors.
 
 **Expanded Form**:
 
-```
-E_pred(t) = Σ_{i=1}^{d} [z_t^(i) - ẑ_t^(i)]²
-```
+$$E_{pred}(t) = \sum_{i=1}^{d} [z_t^{(i)} - \hat{z}_t^{(i)}]^2$$
 
-where d is the latent dimensionality (typically 6 in our optimized configuration).
+where $d$ is the latent dimensionality (typically 6 in our optimized configuration).
 
-**Physical Interpretation**: Each latent dimension corresponds to specific plasma species or process parameters. A large prediction error in dimension i suggests an unexpected change in the corresponding physical quantity (e.g., sudden increase in fluorine emission at 685.6 nm).
+**Physical Interpretation**: Each latent dimension corresponds to specific plasma species or process parameters. A large prediction error in dimension $i$ suggests an unexpected change in the corresponding physical quantity (e.g., sudden increase in fluorine emission at 685.6 nm).
 
 **Combined Anomaly Score**:
 
-```
-A(t) = α·E_recon(t) + β·E_pred(t)
-```
+$$A(t) = \alpha \cdot E_{recon}(t) + \beta \cdot E_{pred}(t)$$
 
-where α and β are weighting factors (we use α = β = 1 for equal weighting).
+where $\alpha$ and $\beta$ are weighting factors (we use $\alpha = \beta = 1$ for equal weighting).
 
 **Multi-scale Detection Rationale**: The composite score addresses two complementary failure modes:
-1. **Spatial anomalies** (α term): Captures spectral patterns never seen during training, even if temporally consistent
-2. **Temporal anomalies** (β term): Detects abrupt changes in process trajectory, even if individual spectra appear normal
+1. **Spatial anomalies** ($\alpha$ term): Captures spectral patterns never seen during training, even if temporally consistent
+2. **Temporal anomalies** ($\beta$ term): Detects abrupt changes in process trajectory, even if individual spectra appear normal
 
-**Statistical Threshold**: Anomaly detection is performed by comparing A(t) to a threshold τ derived from the training data distribution:
+**Statistical Threshold**: Anomaly detection is performed by comparing $A(t)$ to a threshold $\tau$ derived from the training data distribution:
 
-```
-τ = μ_A + k·σ_A
-```
+$$\tau = \mu_A + k \cdot \sigma_A$$
 
-where μ_A and σ_A are the mean and standard deviation of A(t) on normal data, and k is a sensitivity parameter (typically k ∈ [2, 3] for 95-99.7% confidence intervals under Gaussian assumptions).
+where $\mu_A$ and $\sigma_A$ are the mean and standard deviation of $A(t)$ on normal data, and $k$ is a sensitivity parameter (typically $k \in [2, 3]$ for 95-99.7% confidence intervals under Gaussian assumptions).
 
 **Adaptive Thresholding**: For non-stationary processes, we employ a moving average:
 
-```
-τ_adaptive(t) = μ(A_{t-w:t}) + k·σ(A_{t-w:t})
-```
+$$\tau_{adaptive}(t) = \mu(A_{t-w:t}) + k \cdot \sigma(A_{t-w:t})$$
 
-where w is the window size (e.g., w = 50 time steps).
+where $w$ is the window size (e.g., $w = 50$ time steps).
 
 ## 3. Methodology
 
@@ -183,71 +163,62 @@ Interpretability is critical in semiconductor manufacturing, where process engin
 
 #### 3.3.1 Latent Sensitivity Analysis
 
-**Definition**: For each latent dimension i ∈ {1, ..., d}, we compute the wavelength-dependent sensitivity:
+**Definition**: For each latent dimension $i \in \{1, \dots, d\}$, we compute the wavelength-dependent sensitivity:
 
-```
-S_i(λ) = max_{z_i ∈ [-2σ, 2σ]} |Decoder(z_i) - Decoder(0)|
-```
+$$S_i(\lambda) = \max_{z_i \in [-2\sigma, 2\sigma]} |\text{Decoder}(z_i) - \text{Decoder}(0)|$$
 
-where z_i = [0, ..., 0, z_i, 0, ..., 0] is a vector with only dimension i varied, and σ is the standard deviation of z_i observed in the training data.
+where $z_i = [0, \dots, 0, z_i, 0, \dots, 0]$ is a vector with only dimension $i$ varied, and $\sigma$ is the standard deviation of $z_i$ observed in the training data.
 
 **Theoretical Motivation**: This analysis performs a univariate perturbation study along each latent axis, revealing the decoder's Jacobian structure:
 
-```
-∂x/∂z_i ≈ [Decoder(z_i + Δ) - Decoder(z_i)] / Δ
-```
+$$\frac{\partial x}{\partial z_i} \approx \frac{\text{Decoder}(z_i + \Delta) - \text{Decoder}(z_i)}{\Delta}$$
 
-By varying z_i across its typical range [-2σ, 2σ] (covering ~95% of training data under Gaussian latent prior), we identify which spectral regions λ are maximally coupled to each latent dimension.
+By varying $z_i$ across its typical range $[-2\sigma, 2\sigma]$ (covering ~95% of training data under Gaussian latent prior), we identify which spectral regions $\lambda$ are maximally coupled to each latent dimension.
 
-**Physical Interpretation**: High sensitivity S_i(λ_0) indicates that latent dimension i strongly controls the emission intensity at wavelength λ_0. By cross-referencing λ_0 with spectroscopic databases (e.g., NIST Atomic Spectra Database), we can identify:
-- λ = 750.4 nm → Argon I line (controlled by dimension 2)
-- λ = 685.6 nm → Fluorine I line (controlled by dimension 4)
-- λ = 777.2 nm → Oxygen I line (controlled by dimension 3)
+**Physical Interpretation**: High sensitivity $S_i(\lambda_0)$ indicates that latent dimension $i$ strongly controls the emission intensity at wavelength $\lambda_0$. By cross-referencing $\lambda_0$ with spectroscopic databases (e.g., NIST Atomic Spectra Database), we can identify:
+- $\lambda = 750.4$ nm → Argon I line (controlled by dimension 2)
+- $\lambda = 685.6$ nm → Fluorine I line (controlled by dimension 4)
+- $\lambda = 777.2$ nm → Oxygen I line (controlled by dimension 3)
 
 **Computational Implementation**:
 
-```
+```python
+# Pseudocode
 For i = 1 to d:
-    For z_i in linspace(-2σ_i, 2σ_i, N_samples):
+    For z_i in linspace(-2*sigma_i, 2*sigma_i, N_samples):
         z = [0, ..., 0, z_i, 0, ..., 0]
         x_reconstructed = Decoder(z)
-        S_i(λ) = max(S_i(λ), |x_reconstructed(λ) - Decoder(0)(λ)|)
+        S_i(lambda) = max(S_i(lambda), abs(x_reconstructed(lambda) - Decoder(0)(lambda)))
 ```
 
-where N_samples = 100 provides sufficient resolution for peak detection.
+where $N_{samples} = 100$ provides sufficient resolution for peak detection.
 
 #### 3.3.2 Ablation-based Contribution Analysis
 
-**Definition**: For a given spectrum x with latent encoding z = Encoder(x), we compute the contribution of dimension i:
+**Definition**: For a given spectrum $x$ with latent encoding $z = \text{Encoder}(x)$, we compute the contribution of dimension $i$:
 
-```
-C_i(λ) = |Decoder(z) - Decoder(z \ {z_i})|
-```
+$$C_i(\lambda) = |\text{Decoder}(z) - \text{Decoder}(z \setminus \{z_i\})|$$
 
-where z \ {z_i} = [z_1, ..., z_{i-1}, 0, z_{i+1}, ..., z_d] denotes the latent vector with dimension i ablated (set to zero).
+where $z \setminus \{z_i\} = [z_1, \dots, z_{i-1}, 0, z_{i+1}, \dots, z_d]$ denotes the latent vector with dimension $i$ ablated (set to zero).
 
-**Theoretical Foundation**: This measures the counterfactual impact of removing feature i. If we decompose the decoder as a linear approximation:
+**Theoretical Foundation**: This measures the counterfactual impact of removing feature $i$. If we decompose the decoder as a linear approximation:
 
-```
-Decoder(z) ≈ Decoder(0) + Σ_{i=1}^{d} z_i · (∂Decoder/∂z_i)|_{z=0}
-```
+$$\text{Decoder}(z) \approx \text{Decoder}(0) + \sum_{i=1}^{d} z_i \cdot \left. \frac{\partial \text{Decoder}}{\partial z_i} \right|_{z=0}$$
 
-then C_i(λ) approximates the additive contribution of dimension i to the reconstructed spectrum.
+then $C_i(\lambda)$ approximates the additive contribution of dimension $i$ to the reconstructed spectrum.
 
 **Comparison with Sensitivity Analysis**:
-- **Sensitivity S_i(λ)**: Shows what dimension i *can control* (capability)
-- **Contribution C_i(λ)**: Shows what dimension i *is controlling* for this specific sample (actual usage)
+- **Sensitivity $S_i(\lambda)$**: Shows what dimension $i$ *can control* (capability)
+- **Contribution $C_i(\lambda)$**: Shows what dimension $i$ *is controlling* for this specific sample (actual usage)
 
 **Example Application**: For a spectrum during endpoint transition:
-- High C_2(750.4 nm): Dimension 2 (Argon) is actively contributing → gas flow stable
-- Low C_4(685.6 nm): Dimension 4 (Fluorine) not contributing → fluorine depletion detected
-- Rising C_5(multiple λ): Dimension 5 (byproducts) increasing → etch endpoint approaching
+- High $C_2(750.4 \text{ nm})$: Dimension 2 (Argon) is actively contributing → gas flow stable
+- Low $C_4(685.6 \text{ nm})$: Dimension 4 (Fluorine) not contributing → fluorine depletion detected
+- Rising $C_5(\text{multiple } \lambda)$: Dimension 5 (byproducts) increasing → etch endpoint approaching
 
 **Statistical Aggregation**: Across the dataset, we compute ensemble contribution:
 
-```
-<C_i(λ)> = (1/T) Σ_{t=1}^{T} C_i^(t)(λ)
-```
+$$\langle C_i(\lambda) \rangle = \frac{1}{T} \sum_{t=1}^{T} C_i^{(t)}(\lambda)$$
 
 This reveals which dimensions are consistently important versus sample-specific.
 
@@ -255,30 +226,28 @@ This reveals which dimensions are consistently important versus sample-specific.
 
 **Saliency Mapping**: To identify critical input wavelengths for anomaly detection, we compute:
 
-```
-G(λ, t) = |∂A(t)/∂x_t(λ)|
-```
+$$G(\lambda, t) = \left| \frac{\partial A(t)}{\partial x_t(\lambda)} \right|$$
 
-where A(t) is the anomaly score. This gradient indicates which wavelengths, if perturbed, would most affect the anomaly decision.
+where $A(t)$ is the anomaly score. This gradient indicates which wavelengths, if perturbed, would most affect the anomaly decision.
 
 **Backpropagation through VAE-LSTM**:
 
-```
-∂A/∂x = ∂E_recon/∂x + ∂E_pred/∂x
-      = 2(x - x̂) + 2(z - ẑ)·(∂z/∂x)
-```
+$$
+\begin{aligned}
+\frac{\partial A}{\partial x} &= \frac{\partial E_{recon}}{\partial x} + \frac{\partial E_{pred}}{\partial x} \\
+&= 2(x - \hat{x}) + 2(z - \hat{z}) \cdot \frac{\partial z}{\partial x}
+\end{aligned}
+$$
 
-where ∂z/∂x = ∂Encoder/∂x is obtained via automatic differentiation.
+where $\partial z/\partial x = \partial \text{Encoder}/\partial x$ is obtained via automatic differentiation.
 
 #### 3.3.4 Latent Space Traversal Visualization
 
 **Controlled Generation**: We generate synthetic spectra by traversing each latent dimension:
 
-```
-x_synthetic(z_i, step) = Decoder([0, ..., 0, z_i^min + step·Δz_i, 0, ..., 0])
-```
+$$x_{synthetic}(z_i, step) = \text{Decoder}([0, \dots, 0, z_i^{min} + step \cdot \Delta z_i, 0, \dots, 0])$$
 
-where step ∈ {0, 1, ..., N_steps} and Δz_i = (z_i^max - z_i^min) / N_steps.
+where $step \in \{0, 1, \dots, N_{steps}\}$ and $\Delta z_i = (z_i^{max} - z_i^{min}) / N_{steps}$.
 
 **Information Content**: This reveals:
 1. **Monotonicity**: Whether increasing z_i consistently increases/decreases certain peaks
