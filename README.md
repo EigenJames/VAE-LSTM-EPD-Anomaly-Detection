@@ -79,19 +79,53 @@ The LSTM predicts the next latent vector: ẑ_{t+1} = f_LSTM(z_t, h_t)
 
 ### 2.3 Anomaly Detection Framework
 
-We define a composite anomaly score combining spatial and temporal deviations:
+We define a composite anomaly score combining spatial and temporal deviations, leveraging both the VAE's reconstruction capability and the LSTM's predictive power.
 
 **Reconstruction Error (Spatial Anomaly)**:
 
 ```
-E_recon(t) = ||x_t - x̂_t||² = ||x_t - Decoder(Encoder(x_t))||²
+E_recon(t) = ||x_t - x̂_t||²₂ = ||x_t - Decoder(Encoder(x_t))||²₂
 ```
+
+This measures the L2 norm of the spectral reconstruction error at time t. Under the assumption that normal process states lie on a learned manifold M in the high-dimensional spectral space, deviations from this manifold (e.g., due to process drift or equipment malfunction) manifest as increased reconstruction error. Formally:
+
+```
+E_recon(t) = Σ_{λ=1}^{D} [x_t(λ) - x̂_t(λ)]²
+```
+
+where D = 4550 wavelength channels. The VAE learns to minimize this error during training on normal process data, making it sensitive to out-of-distribution spectral patterns.
+
+**Theoretical Justification**: The reconstruction error can be interpreted as the negative log-likelihood under the decoder's probabilistic model:
+
+```
+E_recon(t) ≈ -log p_θ(x_t|z_t)
+```
+
+High reconstruction error indicates low probability under the learned generative model, signifying anomalous spectral signatures.
 
 **Prediction Error (Temporal Anomaly)**:
 
 ```
-E_pred(t) = ||z_t - ẑ_t||² = ||z_t - LSTM(z_{t-1})||²
+E_pred(t) = ||z_t - ẑ_t||²₂ = ||z_t - LSTM(z_{t-1}, h_{t-1})||²₂
 ```
+
+This quantifies the deviation between the observed latent state z_t and the LSTM's prediction ẑ_t based on historical context. The LSTM learns the temporal dynamics:
+
+```
+P(z_t | z_{1:t-1}) ≈ N(ẑ_t, Σ_pred)
+```
+
+where Σ_pred represents prediction uncertainty. Sudden changes in plasma chemistry (e.g., endpoint transition) violate these learned dynamics, resulting in large prediction errors.
+
+**Expanded Form**:
+
+```
+E_pred(t) = Σ_{i=1}^{d} [z_t^(i) - ẑ_t^(i)]²
+```
+
+where d is the latent dimensionality (typically 6 in our optimized configuration).
+
+**Physical Interpretation**: Each latent dimension corresponds to specific plasma species or process parameters. A large prediction error in dimension i suggests an unexpected change in the corresponding physical quantity (e.g., sudden increase in fluorine emission at 685.6 nm).
 
 **Combined Anomaly Score**:
 
@@ -100,6 +134,26 @@ A(t) = α·E_recon(t) + β·E_pred(t)
 ```
 
 where α and β are weighting factors (we use α = β = 1 for equal weighting).
+
+**Multi-scale Detection Rationale**: The composite score addresses two complementary failure modes:
+1. **Spatial anomalies** (α term): Captures spectral patterns never seen during training, even if temporally consistent
+2. **Temporal anomalies** (β term): Detects abrupt changes in process trajectory, even if individual spectra appear normal
+
+**Statistical Threshold**: Anomaly detection is performed by comparing A(t) to a threshold τ derived from the training data distribution:
+
+```
+τ = μ_A + k·σ_A
+```
+
+where μ_A and σ_A are the mean and standard deviation of A(t) on normal data, and k is a sensitivity parameter (typically k ∈ [2, 3] for 95-99.7% confidence intervals under Gaussian assumptions).
+
+**Adaptive Thresholding**: For non-stationary processes, we employ a moving average:
+
+```
+τ_adaptive(t) = μ(A_{t-w:t}) + k·σ(A_{t-w:t})
+```
+
+where w is the window size (e.g., w = 50 time steps).
 
 ## 3. Methodology
 
@@ -125,21 +179,113 @@ The optimizer minimizes validation reconstruction loss over 15 trials.
 
 ### 3.3 Explainable AI (XAI) Techniques
 
-**Latent Sensitivity Analysis**: For each dimension i, compute:
+Interpretability is critical in semiconductor manufacturing, where process engineers must understand and validate model decisions before deployment. We employ multiple XAI methods to map latent features to physical phenomena.
+
+#### 3.3.1 Latent Sensitivity Analysis
+
+**Definition**: For each latent dimension i ∈ {1, ..., d}, we compute the wavelength-dependent sensitivity:
 
 ```
 S_i(λ) = max_{z_i ∈ [-2σ, 2σ]} |Decoder(z_i) - Decoder(0)|
 ```
 
-This quantifies which wavelengths are most affected by varying dimension i.
+where z_i = [0, ..., 0, z_i, 0, ..., 0] is a vector with only dimension i varied, and σ is the standard deviation of z_i observed in the training data.
 
-**Ablation-based Contribution**: For sample x, compute:
+**Theoretical Motivation**: This analysis performs a univariate perturbation study along each latent axis, revealing the decoder's Jacobian structure:
+
+```
+∂x/∂z_i ≈ [Decoder(z_i + Δ) - Decoder(z_i)] / Δ
+```
+
+By varying z_i across its typical range [-2σ, 2σ] (covering ~95% of training data under Gaussian latent prior), we identify which spectral regions λ are maximally coupled to each latent dimension.
+
+**Physical Interpretation**: High sensitivity S_i(λ_0) indicates that latent dimension i strongly controls the emission intensity at wavelength λ_0. By cross-referencing λ_0 with spectroscopic databases (e.g., NIST Atomic Spectra Database), we can identify:
+- λ = 750.4 nm → Argon I line (controlled by dimension 2)
+- λ = 685.6 nm → Fluorine I line (controlled by dimension 4)
+- λ = 777.2 nm → Oxygen I line (controlled by dimension 3)
+
+**Computational Implementation**:
+
+```
+For i = 1 to d:
+    For z_i in linspace(-2σ_i, 2σ_i, N_samples):
+        z = [0, ..., 0, z_i, 0, ..., 0]
+        x_reconstructed = Decoder(z)
+        S_i(λ) = max(S_i(λ), |x_reconstructed(λ) - Decoder(0)(λ)|)
+```
+
+where N_samples = 100 provides sufficient resolution for peak detection.
+
+#### 3.3.2 Ablation-based Contribution Analysis
+
+**Definition**: For a given spectrum x with latent encoding z = Encoder(x), we compute the contribution of dimension i:
 
 ```
 C_i(λ) = |Decoder(z) - Decoder(z \ {z_i})|
 ```
 
-where z \ {z_i} denotes z with dimension i set to zero.
+where z \ {z_i} = [z_1, ..., z_{i-1}, 0, z_{i+1}, ..., z_d] denotes the latent vector with dimension i ablated (set to zero).
+
+**Theoretical Foundation**: This measures the counterfactual impact of removing feature i. If we decompose the decoder as a linear approximation:
+
+```
+Decoder(z) ≈ Decoder(0) + Σ_{i=1}^{d} z_i · (∂Decoder/∂z_i)|_{z=0}
+```
+
+then C_i(λ) approximates the additive contribution of dimension i to the reconstructed spectrum.
+
+**Comparison with Sensitivity Analysis**:
+- **Sensitivity S_i(λ)**: Shows what dimension i *can control* (capability)
+- **Contribution C_i(λ)**: Shows what dimension i *is controlling* for this specific sample (actual usage)
+
+**Example Application**: For a spectrum during endpoint transition:
+- High C_2(750.4 nm): Dimension 2 (Argon) is actively contributing → gas flow stable
+- Low C_4(685.6 nm): Dimension 4 (Fluorine) not contributing → fluorine depletion detected
+- Rising C_5(multiple λ): Dimension 5 (byproducts) increasing → etch endpoint approaching
+
+**Statistical Aggregation**: Across the dataset, we compute ensemble contribution:
+
+```
+<C_i(λ)> = (1/T) Σ_{t=1}^{T} C_i^(t)(λ)
+```
+
+This reveals which dimensions are consistently important versus sample-specific.
+
+#### 3.3.3 Gradient-based Attribution
+
+**Saliency Mapping**: To identify critical input wavelengths for anomaly detection, we compute:
+
+```
+G(λ, t) = |∂A(t)/∂x_t(λ)|
+```
+
+where A(t) is the anomaly score. This gradient indicates which wavelengths, if perturbed, would most affect the anomaly decision.
+
+**Backpropagation through VAE-LSTM**:
+
+```
+∂A/∂x = ∂E_recon/∂x + ∂E_pred/∂x
+      = 2(x - x̂) + 2(z - ẑ)·(∂z/∂x)
+```
+
+where ∂z/∂x = ∂Encoder/∂x is obtained via automatic differentiation.
+
+#### 3.3.4 Latent Space Traversal Visualization
+
+**Controlled Generation**: We generate synthetic spectra by traversing each latent dimension:
+
+```
+x_synthetic(z_i, step) = Decoder([0, ..., 0, z_i^min + step·Δz_i, 0, ..., 0])
+```
+
+where step ∈ {0, 1, ..., N_steps} and Δz_i = (z_i^max - z_i^min) / N_steps.
+
+**Information Content**: This reveals:
+1. **Monotonicity**: Whether increasing z_i consistently increases/decreases certain peaks
+2. **Non-linearity**: Spectral changes may be non-linear in z_i, indicating complex decoder mapping
+3. **Coupled features**: Changes in z_i may affect multiple wavelength regions simultaneously
+
+**Validation Protocol**: Process engineers compare traversal patterns against known physical relationships (e.g., "increasing Ar flow should enhance 750 nm line while diluting reactive species lines").
 
 ## 4. Key Features
 
