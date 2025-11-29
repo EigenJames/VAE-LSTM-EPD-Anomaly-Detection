@@ -39,3 +39,4 @@ Thumbs.db
 *.h5
 *.weights.h5
 checkpoint.weights.h5
+._*
